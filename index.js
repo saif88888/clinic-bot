@@ -22,8 +22,40 @@ app.get('/webhook', (req, res) => {
 });
 
 // Incoming messages (POST)
-app.post('/webhook', (req, res) => {
-	console.log('Incoming:', req.body);
+app.post('/webhook', async (req, res) => {
+	const data = req.body;
+
+	// Check if this is a message
+	if (data.object === 'whatsapp_business_account') {
+		const entry = data.entry?.[0];
+		const changes = entry?.changes?.[0];
+		const message = changes?.value?.messages?.[0];
+
+		if (message) {
+			const from = message.from; // User's phone number
+			const text = message.text?.body; // User's message text
+
+			console.log('User said:', text);
+
+			// Send a reply
+			await fetch(
+				`https://graph.facebook.com/v22.0/${process.env.PHONE_NUMBER_ID}/messages`,
+				{
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						messaging_product: 'whatsapp',
+						to: from,
+						text: { body: 'Thanks for your message!' },
+					}),
+				},
+			);
+		}
+	}
+
 	res.sendStatus(200);
 });
 
