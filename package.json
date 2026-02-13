@@ -9,6 +9,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "engines": {
+  "node": ">=18"
+},
+
   "dependencies": {
     "express": "^5.2.1"
   }
