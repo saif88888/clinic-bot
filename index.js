@@ -46,7 +46,7 @@ async function sendMessage(to, message) {
 
 async function notifyClinic(booking) {
 	await resend.emails.send({
-		from: 'Clinic <notifications@yourdomain.com>',
+		from: 'Clinic <onboarding@resend.dev>',
 		to: process.env.CLINIC_EMAIL,
 		subject: `New booking request from ${booking.name}`,
 		text: `New booking request:
