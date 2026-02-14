@@ -192,12 +192,7 @@ app.post('/webhook', async (req, res) => {
 
 				await sendMessage(
 					from,
-					`Thanks, ${name}. What treatment would you like to book?
-
-For example:
-- Anti-wrinkle injections
-- Dermal fillers
-- Skin consultation`,
+					`Thanks, ${name}. What treatment would you like to book?`,
 				);
 				return res.sendStatus(200);
 			}
