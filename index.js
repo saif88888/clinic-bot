@@ -1,5 +1,7 @@
 const express = require('express');
 const app = express();
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 app.use(express.json());
 
@@ -59,8 +61,8 @@ const transporter = nodemailer.createTransport({
 });
 
 async function notifyClinic(booking) {
-	await transporter.sendMail({
-		from: process.env.NOTIFY_EMAIL_USER,
+	await resend.emails.send({
+		from: 'Clinic <notifications@yourdomain.com>',
 		to: process.env.CLINIC_EMAIL,
 		subject: `New booking request from ${booking.name}`,
 		text: `New booking request:
