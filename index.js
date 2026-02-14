@@ -44,22 +44,6 @@ async function sendMessage(to, message) {
 	}
 }
 
-const nodemailer = require('nodemailer');
-
-const transporter = nodemailer.createTransport({
-	host: 'smtp.gmail.com',
-	port: 587,
-	secure: false,
-	family: 4,
-	auth: {
-		user: process.env.NOTIFY_EMAIL_USER,
-		pass: process.env.NOTIFY_EMAIL_PASS,
-	},
-	tls: {
-		rejectUnauthorized: false,
-	},
-});
-
 async function notifyClinic(booking) {
 	await resend.emails.send({
 		from: 'Clinic <notifications@yourdomain.com>',
