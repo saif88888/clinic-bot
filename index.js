@@ -89,6 +89,7 @@ function resetState(from) {
 		service: '',
 		date: '',
 		time: '',
+		lastMessageId: null,
 	};
 }
 
@@ -128,6 +129,14 @@ app.post('/webhook', async (req, res) => {
 			if (!userState[from]) {
 				resetState(from);
 			}
+			// Deduplicate WhatsApp retries
+			if (userState[from]?.lastMessageId === message.id) {
+				console.log('Duplicate message ignored:', message.id);
+				return res.sendStatus(200);
+			}
+
+			// Store the latest message ID
+			userState[from].lastMessageId = message.id;
 
 			const state = userState[from];
 
