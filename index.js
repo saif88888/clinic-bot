@@ -45,7 +45,10 @@ async function sendMessage(to, message) {
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
-	service: 'gmail',
+	host: 'smtp.gmail.com',
+	port: 465,
+	secure: true,
+	family: 4, // <--- forces IPv4 so Railway can connect
 	auth: {
 		user: process.env.NOTIFY_EMAIL_USER,
 		pass: process.env.NOTIFY_EMAIL_PASS,
