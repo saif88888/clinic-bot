@@ -46,12 +46,15 @@ const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
 	host: 'smtp.gmail.com',
-	port: 465,
-	secure: true,
-	family: 4, // <--- forces IPv4 so Railway can connect
+	port: 587,
+	secure: false,
+	family: 4,
 	auth: {
 		user: process.env.NOTIFY_EMAIL_USER,
 		pass: process.env.NOTIFY_EMAIL_PASS,
+	},
+	tls: {
+		rejectUnauthorized: false,
 	},
 });
 
