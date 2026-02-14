@@ -1,20 +1,19 @@
 const express = require('express');
 const app = express();
 const { Resend } = require('resend');
+const { createClient } = require('@supabase/supabase-js');
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-app.use(express.json());
+const supabase = createClient(
+	process.env.SUPABASE_URL,
+	process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
 
-// In-memory user state (per WhatsApp number)
-const userState = {};
-// Structure:
-// userState[from] = {
-//   step: "idle" | "ask_name" | "ask_service" | "ask_date" | "ask_time" | "confirm",
-//   name: "",
-//   service: "",
-//   date: "",
-//   time: ""
-// };
+// Your clinic ID from Supabase
+const CLINIC_ID = '348cd187-1f0f-45aa-85e5-103ddd23e44d';
+
+app.use(express.json());
 
 // ------------------------------
 // Helper: Send WhatsApp Message
@@ -80,20 +79,6 @@ app.get('/webhook', (req, res) => {
 });
 
 // ------------------------------
-// Helper: Reset user state
-// ------------------------------
-function resetState(from) {
-	userState[from] = {
-		step: 'idle',
-		name: '',
-		service: '',
-		date: '',
-		time: '',
-		lastMessageId: null,
-	};
-}
-
-// ------------------------------
 // Main Menu Message
 // ------------------------------
 function getMainMenu() {
@@ -122,42 +107,92 @@ app.post('/webhook', async (req, res) => {
 		if (message) {
 			const from = message.from;
 			const text = (message.text?.body || '').trim();
+			const messageId = message.id;
 
 			console.log('User said:', text);
 
-			// Ensure state exists
-			if (!userState[from]) {
-				resetState(from);
+			// 1) Load state from DB
+			let { data: state, error } = await supabase
+				.from('message_state')
+				.select('*')
+				.eq('phone', from)
+				.single();
+
+			if (error && error.code !== 'PGRST116') {
+				console.error('Error loading state:', error);
 			}
-			// Deduplicate WhatsApp retries
-			if (userState[from]?.lastMessageId === message.id) {
-				console.log('Duplicate message ignored:', message.id);
+
+			// 2) If no state exists → create it
+			if (!state) {
+				const { data: newState, error: insertError } =
+					await supabase
+						.from('message_state')
+						.insert({
+							phone: from,
+							clinic_id: CLINIC_ID,
+							step: 'idle',
+							name: null,
+							service: null,
+							date: null,
+							time: null,
+							last_message_id: null,
+						})
+						.select()
+						.single();
+
+				if (insertError) {
+					console.error('Error creating state:', insertError);
+					return res.sendStatus(500);
+				}
+
+				state = newState;
+			}
+
+			// 3) Deduplicate WhatsApp retries using DB
+			if (state.last_message_id === messageId) {
+				console.log('Duplicate message ignored:', messageId);
 				return res.sendStatus(200);
 			}
 
-			// Store the latest message ID
-			userState[from].lastMessageId = message.id;
-
-			const state = userState[from];
+			// Update last_message_id
+			await supabase
+				.from('message_state')
+				.update({ last_message_id: messageId })
+				.eq('id', state.id);
 
 			// ------------------------------
 			// If user types "menu" at any time → reset and show menu
 			// ------------------------------
 			if (text.toLowerCase() === 'menu') {
-				resetState(from);
+				await supabase
+					.from('message_state')
+					.update({
+						step: 'idle',
+						name: null,
+						service: null,
+						date: null,
+						time: null,
+					})
+					.eq('id', state.id);
+
 				await sendMessage(from, getMainMenu());
 				return res.sendStatus(200);
 			}
 
 			// ------------------------------
-			// If user is in the middle of booking, handle steps
+			// Booking flow steps
 			// ------------------------------
 			if (state.step === 'ask_name') {
-				state.name = text;
-				state.step = 'ask_service';
+				const name = text;
+
+				await supabase
+					.from('message_state')
+					.update({ step: 'ask_service', name })
+					.eq('id', state.id);
+
 				await sendMessage(
 					from,
-					`Thanks, ${state.name}. What treatment would you like to book?
+					`Thanks, ${name}. What treatment would you like to book?
 
 For example:
 - Anti-wrinkle injections
@@ -168,8 +203,13 @@ For example:
 			}
 
 			if (state.step === 'ask_service') {
-				state.service = text;
-				state.step = 'ask_date';
+				const service = text;
+
+				await supabase
+					.from('message_state')
+					.update({ step: 'ask_date', service })
+					.eq('id', state.id);
+
 				await sendMessage(
 					from,
 					`Great. What date would you like to come in?
@@ -182,11 +222,16 @@ For example:
 			}
 
 			if (state.step === 'ask_date') {
-				state.date = text;
-				state.step = 'ask_time';
+				const date = text;
+
+				await supabase
+					.from('message_state')
+					.update({ step: 'ask_time', date })
+					.eq('id', state.id);
+
 				await sendMessage(
 					from,
-					`And what time works best for you on ${state.date}?
+					`And what time works best for you on ${date}?
 
 For example:
 - 10:00
@@ -196,17 +241,28 @@ For example:
 			}
 
 			if (state.step === 'ask_time') {
-				state.time = text;
-				state.step = 'confirm';
+				const time = text;
+
+				await supabase
+					.from('message_state')
+					.update({ step: 'confirm', time })
+					.eq('id', state.id);
+
+				// Reload state to get latest values
+				const { data: updatedState } = await supabase
+					.from('message_state')
+					.select('*')
+					.eq('id', state.id)
+					.single();
 
 				await sendMessage(
 					from,
 					`Perfect. Please confirm your booking:
 
-Name: ${state.name}
-Treatment: ${state.service}
-Date: ${state.date}
-Time: ${state.time}
+Name: ${updatedState.name}
+Treatment: ${updatedState.service}
+Date: ${updatedState.date}
+Time: ${updatedState.time}
 
 Reply:
 1️⃣ to confirm
@@ -217,27 +273,98 @@ Reply:
 
 			if (state.step === 'confirm') {
 				if (text === '1') {
+					// Reload state to be safe
+					const { data: latestState } = await supabase
+						.from('message_state')
+						.select('*')
+						.eq('id', state.id)
+						.single();
+
+					// Create / upsert customer
+					const { data: customer, error: customerError } =
+						await supabase
+							.from('customers')
+							.upsert(
+								{ phone: from, name: latestState.name },
+								{ onConflict: 'phone' },
+							)
+							.select()
+							.single();
+
+					if (customerError) {
+						console.error(
+							'Error upserting customer:',
+							customerError,
+						);
+					}
+
+					// Create booking
+					const { error: bookingError } = await supabase
+						.from('bookings')
+						.insert({
+							clinic_id: CLINIC_ID,
+							customer_id: customer?.id || null,
+							service: latestState.service,
+							date: latestState.date,
+							time: latestState.time,
+							status: 'pending',
+						});
+
+					if (bookingError) {
+						console.error(
+							'Error creating booking:',
+							bookingError,
+						);
+					}
+
+					// Notify clinic
 					await notifyClinic({
 						from,
-						name: state.name,
-						service: state.service,
-						date: state.date,
-						time: state.time,
+						name: latestState.name,
+						service: latestState.service,
+						date: latestState.date,
+						time: latestState.time,
 					});
+
+					// Reset state
+					await supabase
+						.from('message_state')
+						.update({
+							step: 'idle',
+							name: null,
+							service: null,
+							date: null,
+							time: null,
+						})
+						.eq('id', state.id);
+
 					await sendMessage(
 						from,
-						`✅ Your appointment request has been received. We will confirm your booking shortly. If you need anything else, reply "menu" to see options again.`,
+						`✅ Your booking request has been sent to the clinic.
+
+They will confirm your appointment shortly.
+
+Reply "menu" to see options again.`,
 					);
-					resetState(from);
 					return res.sendStatus(200);
 				} else if (text === '2') {
+					await supabase
+						.from('message_state')
+						.update({
+							step: 'idle',
+							name: null,
+							service: null,
+							date: null,
+							time: null,
+						})
+						.eq('id', state.id);
+
 					await sendMessage(
 						from,
 						`❌ Your booking has been cancelled.
 
 If you’d like to start again, reply "menu".`,
 					);
-					resetState(from);
 					return res.sendStatus(200);
 				} else {
 					await sendMessage(
@@ -251,21 +378,23 @@ If you’d like to start again, reply "menu".`,
 			}
 
 			// ------------------------------
-			// If not in a flow → handle main menu / first contact
+			// First contact / main menu
 			// ------------------------------
 			if (
 				!text ||
-				text.toLowerCase() === 'hi' ||
-				text.toLowerCase() === 'hello'
+				['hi', 'hello', 'hey'].includes(text.toLowerCase())
 			) {
 				await sendMessage(from, getMainMenu());
 				return res.sendStatus(200);
 			}
 
-			// Main menu options (only when idle)
 			if (state.step === 'idle') {
 				if (text === '1') {
-					state.step = 'ask_name';
+					await supabase
+						.from('message_state')
+						.update({ step: 'ask_name' })
+						.eq('id', state.id);
+
 					await sendMessage(
 						from,
 						`Great! Let's book your appointment.
@@ -323,6 +452,5 @@ app.get('/', (req, res) => {
 	res.send('Bot is running');
 });
 
-// ------------------------------
 app.listen(3000, () => console.log('Server running on port 3000'));
 console.log('Redeploy');
