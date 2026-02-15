@@ -299,6 +299,7 @@ Reply:
 						.insert({
 							clinic_id: CLINIC_ID,
 							customer_id: customer?.id || null,
+							customer_name: latestState.name,
 							service: latestState.service,
 							date: latestState.date,
 							time: latestState.time,
