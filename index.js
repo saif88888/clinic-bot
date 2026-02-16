@@ -192,7 +192,7 @@ app.post('/webhook', async (req, res) => {
 
 				await sendMessage(
 					from,
-					`Thanks, ${name}. What treatment would you like to book?`,
+					`Thanks, ${name}. What Services would you like to book?`,
 				);
 				return res.sendStatus(200);
 			}
