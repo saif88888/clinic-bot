@@ -45,7 +45,7 @@ async function sendMessage(to, message) {
 
 async function notifyClinic(booking) {
 	await resend.emails.send({
-		from: 'Clinic Booking System <onboarding@resend.dev>',
+		from: 'OtoForce Booking System <onboarding@resend.dev>',
 		to: process.env.CLINIC_EMAIL,
 		subject: `New booking request from ${booking.name}`,
 		text: `New booking request:
@@ -82,7 +82,7 @@ app.get('/webhook', (req, res) => {
 // Main Menu Message
 // ------------------------------
 function getMainMenu() {
-	return `👋 Welcome to our Clinic!
+	return `👋 Welcome to our Booking service!
 
 How can I help you today?
 
@@ -336,7 +336,7 @@ Reply:
 
 					await sendMessage(
 						from,
-						`✅ Your booking request has been sent to the clinic.
+						`✅ Your booking request has been sent to the team.
 
 They will confirm your appointment shortly.
 
@@ -403,7 +403,7 @@ What’s your full name?`,
 				if (text === '2') {
 					await sendMessage(
 						from,
-						`We’re open Monday–Saturday, 9am–6pm.
+						`We’re open Monday–friday
 
 Reply "menu" to go back to the main menu.`,
 					);
